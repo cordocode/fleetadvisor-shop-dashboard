@@ -10,6 +10,8 @@ function App() {
   const [addingTechToJob, setAddingTechToJob] = useState(null);
   const [newTechName, setNewTechName] = useState('');
   const [completingJob, setCompletingJob] = useState(null);
+  const [editingQuotedHours, setEditingQuotedHours] = useState(null);
+  const [editedHours, setEditedHours] = useState('');
 
   useEffect(() => {
     fetchJobs();
@@ -74,6 +76,37 @@ function App() {
     fetchJobs();
   };
 
+  const handleToggleDiagnostic = async (jobId) => {
+    await fetch(`/api/jobs/${jobId}/diagnostic/toggle`, {
+      method: 'PUT'
+    });
+    fetchJobs();
+  };
+
+  const handleEditQuotedHours = (jobId, currentHours) => {
+    setEditingQuotedHours(jobId);
+    setEditedHours(currentHours.toString());
+  };
+
+  const handleSaveQuotedHours = async (jobId) => {
+    const hours = parseFloat(editedHours);
+    if (!isNaN(hours) && hours > 0) {
+      await fetch(`/api/jobs/${jobId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ quotedHours: hours })
+      });
+      fetchJobs();
+    }
+    setEditingQuotedHours(null);
+    setEditedHours('');
+  };
+
+  const handleCancelEditQuotedHours = () => {
+    setEditingQuotedHours(null);
+    setEditedHours('');
+  };
+
   const handleDragStart = (e, job) => {
     setDraggedJob(job);
     e.dataTransfer.effectAllowed = 'move';
@@ -134,6 +167,21 @@ function App() {
     return '#FF9800';
   };
 
+  const getDiagnosticProgressPercentage = (job) => {
+    if (!job.diagnostic) return 0;
+    // Cap the visual progress at 4 hours
+    return Math.min((job.diagnostic.time / 4) * 100, 100);
+  };
+
+  const formatDiagnosticTime = (hours) => {
+    if (!hours) return '0:00:00';
+    const totalSeconds = Math.floor(hours * 3600);
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+    return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
   return (
     <div className="App">
       <div className="header">
@@ -163,7 +211,28 @@ function App() {
             <div className="job-stats">
               <div className="stat">
                 <span className="label">Quoted:</span>
-                <span className="value">{job.quotedHours}h</span>
+                {editingQuotedHours === job.id ? (
+                  <input
+                    type="number"
+                    step="0.5"
+                    className="quoted-hours-input"
+                    value={editedHours}
+                    onChange={(e) => setEditedHours(e.target.value)}
+                    onBlur={() => handleSaveQuotedHours(job.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveQuotedHours(job.id);
+                      if (e.key === 'Escape') handleCancelEditQuotedHours();
+                    }}
+                    autoFocus
+                  />
+                ) : (
+                  <span 
+                    className="value editable-value" 
+                    onDoubleClick={() => handleEditQuotedHours(job.id, job.quotedHours)}
+                  >
+                    {job.quotedHours}h
+                  </span>
+                )}
               </div>
               <div className="stat">
                 <span className="label">Spent:</span>
@@ -185,6 +254,27 @@ function App() {
                   backgroundColor: getProgressColor(job)
                 }}
               />
+            </div>
+
+            <div className="diagnostic-section">
+              <div className="diagnostic-header">
+                <span className="diagnostic-label">Diagnostic</span>
+                <span className="diagnostic-time">{formatDiagnosticTime(job.diagnostic?.time || 0)}</span>
+                <button
+                  className={`diagnostic-toggle ${job.diagnostic?.isRunning ? 'running' : ''}`}
+                  onClick={() => handleToggleDiagnostic(job.id)}
+                >
+                  {job.diagnostic?.isRunning ? 'STOP' : 'START'}
+                </button>
+              </div>
+              <div className="diagnostic-progress-bar">
+                <div
+                  className="diagnostic-progress-fill"
+                  style={{
+                    width: `${getDiagnosticProgressPercentage(job)}%`
+                  }}
+                />
+              </div>
             </div>
 
             <div className="techs-section">
